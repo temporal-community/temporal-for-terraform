@@ -4,17 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/cdavisafc/terraform-manager/pkg/terraform"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 )
 
 // DeployAWSInfrastructure handles the AWS infrastructure deployment
 func DeployAWSInfrastructure(ctx context.Context, action string, environmentID string) (string, error) {
+	shouldFail := false
+	if shouldFail {
+		return "", temporal.NewApplicationError("forced failure for retry testing", "TEST_FAILURE")
+	}
 	logger := activity.GetLogger(ctx)
 	logger.Info("Starting AWS infrastructure deployment", "action", action, "environmentID", environmentID)
 
@@ -44,6 +48,15 @@ func DeployAWSInfrastructure(ctx context.Context, action string, environmentID s
 
 	// Apply or destroy based on action
 	if action == "create" {
+		// If the state file exists, untaint the resource before applying
+		// This needs more thorough testing
+		stateFile := filepath.Join(stateDir, "terraform.tfstate")
+		if _, err := os.Stat(stateFile); err == nil {
+			logger.Info("State file exists, untainting resource")
+			if err := terraform.Untaint(awsDir); err != nil {
+				return "", fmt.Errorf("terraform untaint failed: %v", err)
+			}
+		}
 		if err := terraform.Apply(awsDir, true); err != nil {
 			return "", fmt.Errorf("terraform apply failed: %v", err)
 		}
@@ -83,6 +96,10 @@ func DeployAWSInfrastructure(ctx context.Context, action string, environmentID s
 
 // DeployCloudflareDNS handles the Cloudflare DNS configuration
 func DeployCloudflareDNS(ctx context.Context, action string, awsIP string, environmentID string) error {
+	shouldFail := false
+	if shouldFail {
+		return fmt.Errorf("forced failure for retry testing")
+	}
 	logger := activity.GetLogger(ctx)
 	logger.Info("Starting Cloudflare DNS deployment", "action", action, "ip", awsIP, "environmentID", environmentID)
 
@@ -147,56 +164,4 @@ func DeployCloudflareDNS(ctx context.Context, action string, awsIP string, envir
 	}
 
 	return nil
-}
-
-// copyDir copies a directory recursively, excluding specified patterns
-func copyDir(src, dst string, excludePatterns []string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip excluded patterns
-		for _, pattern := range excludePatterns {
-			matched, err := filepath.Match(pattern, info.Name())
-			if err != nil {
-				return err
-			}
-			if matched {
-				if info.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-		}
-
-		// Create relative path
-		relPath, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-
-		// Create destination path
-		dstPath := filepath.Join(dst, relPath)
-
-		if info.IsDir() {
-			return os.MkdirAll(dstPath, info.Mode())
-		}
-
-		// Copy file
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer srcFile.Close()
-
-		dstFile, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY, info.Mode())
-		if err != nil {
-			return err
-		}
-		defer dstFile.Close()
-
-		_, err = io.Copy(dstFile, srcFile)
-		return err
-	})
 }

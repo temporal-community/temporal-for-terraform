@@ -4,16 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	stdlog "log"
+	"log"
 	"math/rand"
-	"os"
+	"time"
 
 	"github.com/cdavisafc/terraform-manager/pkg/workflow"
 	"go.temporal.io/sdk/client"
 )
 
 type temporalLogger struct {
-	*stdlog.Logger
+	*log.Logger
 }
 
 func (l *temporalLogger) Debug(msg string, keyvals ...interface{}) {
@@ -33,81 +33,74 @@ func (l *temporalLogger) Error(msg string, keyvals ...interface{}) {
 }
 
 func generateEnvironmentID() string {
+	rand.Seed(time.Now().UnixNano())
 	return fmt.Sprintf("env-%d", rand.Intn(10000))
 }
 
 func main() {
-	// Configure logger
-	stdLogger := stdlog.New(os.Stdout, "[STARTER] ", stdlog.LstdFlags)
-	logger := &temporalLogger{stdLogger}
-	logger.Info("Starting workflow...")
-
 	// Parse command line arguments
-	action := flag.String("action", "create", "Action to perform: create or destroy")
-	environmentID := flag.String("environment", "", "Environment ID (required for destroy, optional for create)")
+	action := flag.String("action", "", "Action to perform (create, destroy, or approve)")
+	environmentID := flag.String("environment", "", "Environment ID (required for destroy and approve)")
+	dnsEntryApproved := flag.Bool("dns-approved", true, "Whether DNS entry is approved (default: true)")
 	flag.Parse()
+
+	// Validate action
+	if *action != "create" && *action != "destroy" && *action != "approve" {
+		log.Fatal("Action must be either 'create', 'destroy', or 'approve'")
+	}
+
+	// Create Temporal client
+	c, err := client.Dial(client.Options{
+		HostPort: client.DefaultHostPort,
+	})
+	if err != nil {
+		log.Fatalf("Unable to create client: %v", err)
+	}
+	defer c.Close()
+
+	if *action == "approve" {
+		if *environmentID == "" {
+			log.Fatal("Environment ID is required for approve action")
+		}
+		workflowID := fmt.Sprintf("terraform-workflow-%s", *environmentID)
+		err = c.SignalWorkflow(context.Background(), workflowID, "", "dns-approval", true)
+		if err != nil {
+			log.Fatalf("Unable to send approval signal: %v", err)
+		}
+		log.Printf("Successfully sent DNS approval signal to workflow %s", workflowID)
+		return
+	}
 
 	// Generate or validate environment ID
 	var envID string
 	if *action == "create" {
-		if *environmentID != "" {
-			envID = *environmentID
-		} else {
-			envID = generateEnvironmentID()
-		}
-		logger.Info("Using environment ID", "id", envID)
-	} else if *action == "destroy" {
+		envID = generateEnvironmentID()
+	} else {
 		if *environmentID == "" {
-			logger.Error("Environment ID is required for destroy action")
-			os.Exit(1)
+			log.Fatal("Environment ID is required for destroy action")
 		}
 		envID = *environmentID
-		logger.Info("Destroying environment", "id", envID)
-	} else {
-		logger.Error("Unknown action. Use -action=create or -action=destroy")
-		os.Exit(1)
 	}
 
-	// Create the client object just once per process
-	c, err := client.Dial(client.Options{
-		HostPort: client.DefaultHostPort,
-		Logger:   logger,
-	})
-	if err != nil {
-		logger.Error("Unable to create Temporal client", "error", err)
-		os.Exit(1)
-	}
-	defer c.Close()
-
-	// Create a context for the workflow
-	ctx := context.Background()
-
-	// Start the workflow
+	// Start workflow
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        fmt.Sprintf("terraform-workflow-%s", envID),
 		TaskQueue: "terraform-task-queue",
 	}
 
-	we, err := c.ExecuteWorkflow(ctx, workflowOptions, workflow.InfrastructureWorkflow, *action, envID)
+	we, err := c.ExecuteWorkflow(context.Background(), workflowOptions, workflow.InfrastructureWorkflow, *action, envID, *dnsEntryApproved)
 	if err != nil {
-		logger.Error("Unable to start workflow", "error", err)
-		os.Exit(1)
+		log.Fatalf("Unable to start workflow: %v", err)
 	}
 
-	logger.Info("Started workflow", "workflowID", we.GetID(), "runID", we.GetRunID())
+	log.Printf("Started workflow with ID %s and RunID %s\n", we.GetID(), we.GetRunID())
 
-	// Wait for the workflow to complete
+	// Wait for workflow completion
 	var result error
-	err = we.Get(ctx, &result)
+	err = we.Get(context.Background(), &result)
 	if err != nil {
-		logger.Error("Unable to get workflow result", "error", err)
-		os.Exit(1)
+		log.Fatalf("Workflow failed: %v", err)
 	}
 
-	if result != nil {
-		logger.Error("Workflow failed", "error", result)
-		os.Exit(1)
-	}
-
-	logger.Info("Workflow completed successfully")
+	log.Printf("Workflow completed successfully")
 }

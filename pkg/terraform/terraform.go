@@ -42,3 +42,13 @@ func Destroy(dir string, autoApprove bool) error {
 	}
 	return nil
 }
+
+func Untaint(dir string) error {
+	cmd := exec.Command("terraform", "untaint", "aws_instance.app_server")
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("terraform untaint failed: %v\n%s", err, string(output))
+	}
+	return nil
+}
