@@ -43,12 +43,35 @@ func InfrastructureWorkflow(ctx workflow.Context, action string, environmentID s
 		return err
 	}
 
-	// If DNS entry is not preapproved, wait until approval comes in
+	// If DNS entry is not approved, wait until it is
 	if !dnsEntryApproved {
-		logger.Info("Waiting for DNS entry approval")
-		for !dnsEntryApproved {
+		logger.Info("Waiting for DNS entry approval with a 1 minute timeout.")
+
+		timerCtx, cancelTimerHandler := workflow.WithCancel(ctx)
+		timerFuture := workflow.NewTimer(timerCtx, 30*time.Second)
+
+		timedOut := false
+		selector.AddFuture(timerFuture, func(f workflow.Future) {
+			timedOut = true
+		})
+
+		logger.Info("Waiting for DNS approval signal...")
+		for !dnsEntryApproved && !timedOut {
 			selector.Select(ctx)
 		}
+
+		cancelTimerHandler()
+
+		if timedOut && !dnsEntryApproved {
+			logger.Info("DNS approval timed out. Triggering cleanup.")
+			err := workflow.ExecuteActivity(ctx, DeployAWSInfrastructure, "destroy", environmentID).Get(ctx, nil)
+			if err != nil {
+				logger.Error("Failed to destroy AWS infrastructure after timeout.", "Error", err)
+				return err
+			}
+			return temporal.NewApplicationError("Approval timed out", "TIMEOUT", "DNS approval was not received within 1 minute.")
+		}
+
 		logger.Info("DNS entry approved, proceeding with Cloudflare deployment")
 	}
 
