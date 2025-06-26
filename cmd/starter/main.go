@@ -39,18 +39,18 @@ func generateEnvironmentID() string {
 
 func main() {
 	// Parse command line arguments
-	action := flag.String("action", "", "Action to perform (create, destroy, or approve)")
-	environmentID := flag.String("environment", "", "Environment ID (required for destroy and approve)")
+	action := flag.String("action", "", "Action to perform (create, destroy, approve, or update)")
+	environmentID := flag.String("environment", "", "Environment ID (required for destroy, approve, and update)")
 	dnsEntryApproved := flag.Bool("dns-approved", true, "Whether DNS entry is approved (default: true)")
 	flag.Parse()
 
 	// Validate action
-	if *action != "create" && *action != "destroy" && *action != "approve" {
-		log.Fatal("Action must be either 'create', 'destroy', or 'approve'")
+	if *action != "create" && *action != "destroy" && *action != "approve" && *action != "update" {
+		log.Fatal("Action must be either 'create', 'destroy', 'approve', or 'update'")
 	}
 
 	// Create Temporal client
-	c, err := client.Dial(client.Options{
+	c, err := client.NewClient(client.Options{
 		HostPort: client.DefaultHostPort,
 	})
 	if err != nil {
@@ -58,16 +58,31 @@ func main() {
 	}
 	defer c.Close()
 
-	if *action == "approve" {
+	if *action == "approve" || *action == "update" || *action == "destroy" {
 		if *environmentID == "" {
-			log.Fatal("Environment ID is required for approve action")
+			log.Fatal("Environment ID is required for approve, update, or destroy actions")
 		}
 		workflowID := fmt.Sprintf("terraform-workflow-%s", *environmentID)
-		err = c.SignalWorkflow(context.Background(), workflowID, "", "dns-approval", true)
-		if err != nil {
-			log.Fatalf("Unable to send approval signal: %v", err)
+		var signalName string
+		var signalArg interface{}
+
+		switch *action {
+		case "approve":
+			signalName = "dns-approval"
+			signalArg = true
+		case "update":
+			signalName = "update"
+			signalArg = "update"
+		case "destroy":
+			signalName = "destroy"
+			signalArg = "destroy"
 		}
-		log.Printf("Successfully sent DNS approval signal to workflow %s", workflowID)
+
+		err = c.SignalWorkflow(context.Background(), workflowID, "", signalName, signalArg)
+		if err != nil {
+			log.Fatalf("Unable to send %s signal: %v", *action, err)
+		}
+		log.Printf("Successfully sent %s signal to workflow %s", *action, workflowID)
 		return
 	}
 
@@ -77,7 +92,7 @@ func main() {
 		envID = generateEnvironmentID()
 	} else {
 		if *environmentID == "" {
-			log.Fatal("Environment ID is required for destroy action")
+			log.Fatal("Environment ID is required for this action")
 		}
 		envID = *environmentID
 	}
@@ -88,19 +103,10 @@ func main() {
 		TaskQueue: "terraform-task-queue",
 	}
 
-	we, err := c.ExecuteWorkflow(context.Background(), workflowOptions, workflow.InfrastructureWorkflow, *action, envID, *dnsEntryApproved)
+	we, err := c.ExecuteWorkflow(context.Background(), workflowOptions, workflow.InfrastructureWorkflow, envID, *dnsEntryApproved)
 	if err != nil {
 		log.Fatalf("Unable to start workflow: %v", err)
 	}
 
 	log.Printf("Started workflow with ID %s and RunID %s\n", we.GetID(), we.GetRunID())
-
-	// Wait for workflow completion
-	var result error
-	err = we.Get(context.Background(), &result)
-	if err != nil {
-		log.Fatalf("Workflow failed: %v", err)
-	}
-
-	log.Printf("Workflow completed successfully")
 }

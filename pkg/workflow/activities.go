@@ -54,7 +54,7 @@ func DeployAWSInfrastructure(ctx context.Context, action string, environmentID s
 		if _, err := os.Stat(stateFile); err == nil {
 			logger.Info("State file exists, untainting resource")
 			if err := terraform.Untaint(awsDir); err != nil {
-				return "", fmt.Errorf("terraform untaint failed: %v", err)
+				logger.Warn("terraform untaint failed, but we are ignoring it.", "error", err)
 			}
 		}
 		if err := terraform.Apply(awsDir, true); err != nil {
