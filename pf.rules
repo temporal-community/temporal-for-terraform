@@ -1,0 +1,2 @@
+# Sample firewall rules to simulate network outage
+block out quick to api.cloudflare.com

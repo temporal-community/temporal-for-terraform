@@ -18,6 +18,14 @@ func DeployAWSInfrastructure(ctx context.Context, action string, environmentID s
 	logger := activity.GetLogger(ctx)
 	logger.Info("Starting AWS infrastructure deployment", "action", action, "environmentID", environmentID)
 
+	// Log AWS configuration for debugging
+	awsProfile := os.Getenv("AWS_PROFILE")
+	if awsProfile != "" {
+		logger.Info("Using AWS profile", "profile", awsProfile)
+	} else {
+		logger.Warn("AWS_PROFILE not set, using default credential chain")
+	}
+
 	// Get the current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
