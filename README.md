@@ -14,14 +14,36 @@ Please see the session recordings (coming soon) for more details.
 
 - temporal cli installed
 - terraform cli installed
-- You will need a domain to which you can add DNS entries in Cloudflare and you will need to set the following env vars:
+- AWS CLI installed and configured with SSO profiles
+- You will need a domain to which you can add DNS entries in Cloudflare
 
-```
-export AWS_ACCESS_KEY_ID="..."
-export AWS_SECRET_ACCESS_KEY="..."
-export CLOUDFLARE_ZONE_ID="..."
-export CLOUDFLARE_API_TOKEN="..."
-```
+### AWS Authentication Setup
+
+This project uses AWS SSO for authentication. Before running the application:
+
+1. **Authenticate with AWS SSO** using one of your configured profiles:
+   ```bash
+   aws sso login --profile AWSAdministratorAccess-269172689222
+   # OR
+   aws sso login --profile corp-sso
+   ```
+
+2. **Set the AWS_PROFILE environment variable** to specify which profile to use:
+   ```bash
+   export AWS_PROFILE=AWSAdministratorAccess-269172689222
+   # OR
+   export AWS_PROFILE=corp-sso
+   ```
+
+   Note: If `AWS_PROFILE` is not set, Terraform will use the default AWS credential chain (which may include your default profile or other configured credentials).
+
+3. **Set Cloudflare environment variables**:
+   ```bash
+   export CLOUDFLARE_ZONE_ID="..."
+   export CLOUDFLARE_API_TOKEN="..."
+   ```
+
+**Important**: AWS SSO sessions typically expire after a few hours. If you encounter authentication errors, re-authenticate with `aws sso login --profile <your-profile>`.
 
 You will need three command windows. 
 
@@ -84,3 +106,44 @@ You will use the other two to perform the demos
     1. this will end the workflow (after deprovisioning)
 
 
+## Simulating a network outage
+
+The implementation of the `get_forecast` tool includes a 10 second sleep between the two HTTP requests. Experiment with the following:
+- Run it with no firewall rules
+- Add the firewall rules and enable the firewall
+- Disable the firewall, accept the MCP tool execution and then enable the firewall within 10 seconds. Disable the firewall on the 11th second and see what happens.
+
+
+### Using `pfctl` on a Mac
+
+We will simulate a network outage by adding firewall rules using `pfctl`. This repository includes a `pf.rules` file that will allow you to block API access to Cloudflare. The Cloudflare DNS resolution is fairly stable (some ther APIs like the National Weather Service are not) so the pf.rules file currently just has the domain name. You can check what these are right now with the following command:
+```
+dig +short api.cloudflare.com
+```
+
+The following commands are used to set and delete the rules, and enable and disable the firewall.
+
+To set rules
+```
+sudo pfctl -f pf.rules
+```
+
+To remove the rules. WARNING: this will delete all rules - if you are using pfctl for real, use with caution.
+```
+sudo pfctl -F all
+```
+
+To see the current list of rules:
+```
+sudo pfctl -s rules
+```
+
+To enable the firewall
+```
+sudo pfctl -e
+```
+
+To disable the firewall
+```
+sudo pfctl -d
+```
