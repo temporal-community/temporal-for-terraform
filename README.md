@@ -23,16 +23,12 @@ This project uses AWS SSO for authentication. Before running the application:
 
 1. **Authenticate with AWS SSO** using one of your configured profiles:
    ```bash
-   aws sso login --profile AWSAdministratorAccess-269172689222
-   # OR
-   aws sso login --profile corp-sso
+   aws sso login --profile <your AWS profile>
    ```
 
 2. **Set the AWS_PROFILE environment variable** to specify which profile to use:
    ```bash
-   export AWS_PROFILE=AWSAdministratorAccess-269172689222
-   # OR
-   export AWS_PROFILE=corp-sso
+   export AWS_PROFILE=<your AWS profile>
    ```
 
    Note: If `AWS_PROFILE` is not set, Terraform will use the default AWS credential chain (which may include your default profile or other configured credentials).
