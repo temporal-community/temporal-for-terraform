@@ -20,6 +20,7 @@ resource "aws_instance" "app_server" {
   # Using a different Ubuntu 22.04 LTS AMI to force instance replacement on update
   # Previous AMI:   ami-0ffde298a37fd43b7
   # Current AMI:    ami-053ee446a8202ddd8
+
   ami           = "ami-0ffde298a37fd43b7"
   instance_type = "t2.micro"
 
