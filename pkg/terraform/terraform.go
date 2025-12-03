@@ -2,12 +2,14 @@ package terraform
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 )
 
 func Init(dir string) error {
 	cmd := exec.Command("terraform", "init")
 	cmd.Dir = dir
+	cmd.Env = os.Environ() // Explicitly inherit environment variables
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("terraform init failed: %v\n%s", err, string(output))
@@ -22,6 +24,7 @@ func Apply(dir string, autoApprove bool) error {
 	}
 	cmd := exec.Command("terraform", args...)
 	cmd.Dir = dir
+	cmd.Env = os.Environ() // Explicitly inherit environment variables
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("terraform apply failed: %v\n%s", err, string(output))
@@ -36,6 +39,7 @@ func Destroy(dir string, autoApprove bool) error {
 	}
 	cmd := exec.Command("terraform", args...)
 	cmd.Dir = dir
+	cmd.Env = os.Environ() // Explicitly inherit environment variables
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("terraform destroy failed: %v\n%s", err, string(output))
@@ -46,6 +50,7 @@ func Destroy(dir string, autoApprove bool) error {
 func Untaint(dir string) error {
 	cmd := exec.Command("terraform", "untaint", "aws_instance.app_server")
 	cmd.Dir = dir
+	cmd.Env = os.Environ() // Explicitly inherit environment variables
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("terraform untaint failed: %v\n%s", err, string(output))
