@@ -51,7 +51,7 @@ func main() {
 
 	// Create Temporal client
 	c, err := client.Dial(client.Options{
-		HostPort: client.DefaultHostPort,
+		HostPort: client.DefaultHostPort, // defaults to "localhost:7233"
 	})
 	if err != nil {
 		log.Fatalf("Unable to create client: %v", err)
