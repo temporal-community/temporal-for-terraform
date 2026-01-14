@@ -6,7 +6,7 @@ This was orginally developed for a workshop delivered at PlatformCon 2025 (live 
 
 This code orchestrates the provisioning and management of an AWS EC2 instance and then a Cloudflare DNS record for the newly created server. It does support multiple running environments with a very simple state file storage mechanism - it stores them in subdirectories under `terraform-configs/*-terraform/state`.
 
-Please see the session recordings (coming soon) for more details.
+This content was given in a virtual workshop for PlatformCon - see recording [here](https://www.youtube.com/watch?v=BCPHl0jlH6Y).
 
 # Running the demos
 
@@ -23,16 +23,12 @@ This project uses AWS SSO for authentication. Before running the application:
 
 1. **Authenticate with AWS SSO** using one of your configured profiles:
    ```bash
-   aws sso login --profile AWSAdministratorAccess-269172689222
-   # OR
-   aws sso login --profile corp-sso
+   aws sso login --profile <your AWS profile>
    ```
 
 2. **Set the AWS_PROFILE environment variable** to specify which profile to use:
    ```bash
-   export AWS_PROFILE=AWSAdministratorAccess-269172689222
-   # OR
-   export AWS_PROFILE=corp-sso
+   export AWS_PROFILE=<your AWS profile>
    ```
 
    Note: If `AWS_PROFILE` is not set, Terraform will use the default AWS credential chain (which may include your default profile or other configured credentials).
@@ -55,7 +51,7 @@ You will use the other two to perform the demos
 
 ### demo 1: Basic orchestration
 
-1. `git checkout demo1`
+1. `git checkout demo1-basic-orchestration`
 2. Run the orchstration in the first terminal: `go run ./cmd/worker/main.go`
 3. Run the starter in the second terminal: `go run ./cmd/starter/main.go -action=create`
 4. To destroy `go run ./cmd/starter/main.go -action=destroy -environment=env-id`
@@ -64,7 +60,7 @@ You will use the other two to perform the demos
 
 ### demo 2: Add Human in the Loop (HITL)
 
-1. `git checkout demo2`
+1. `git checkout demo2-HITL`
 2. Run the orchstration: `go run ./cmd/worker/main.go`
 3. Run the starter: `go run ./cmd/starter/main.go -action=create -dns-approved=false`
 	1. To approve `go run ./cmd/starter/main.go -action=approve -environment=env-id`
@@ -75,11 +71,11 @@ You will use the other two to perform the demos
 ### demo 2-b: Show durability
 
 1. Kill the orchestration while it's waiting on approval. Let the timer fire. Bring the orchestration back.
-2. Use the `shouldfail` flag in the activity. If you do it for DNS you'll have the opportunity to point out that the AWS infra provisioning is not retried.
+2. Break the network - i.e. out to the Cloudflare API. If running on a mac, see instructions for using `pfctl` below.
 
 ### demo 3: Add a timeout on the approval (Durable timer)
 
-1. `git checkout demo3`
+1. `git checkout demo3-timer-idempotence`
 2. Run the orchstration: `go run ./cmd/worker/main.go`
 3. Run the starter: `go run ./cmd/starter/main.go -action=create -dns-approved=false`
 	1. To approve `go run ./cmd/starter/main.go -action=approve -environment=env-id`
@@ -96,23 +92,20 @@ You will use the other two to perform the demos
 
 ### demo 4: The pièce de résistance! Digital Twin!!! (Entity workflows)
 
-1. Start a creation: `go run ./cmd/starter/main.go -action=create` 
+1. `git checkout demo4-digital-twin`
+2.  Start a creation: `go run ./cmd/starter/main.go -action=create` 
     1. Note that after the steps finish the workfow is still running
-2. Update: `go run ./cmd/starter/main.go -action=update -environment=env-id`
+3. Update: `go run ./cmd/starter/main.go -action=update -environment=env-id`
     1. if done with no change to the `main.tf` it will be a no op.
     2. if ami is changed in the `main.tf` terraform will cause old instance to shut down and a new one to be created.
-3. To approve `go run ./cmd/starter/main.go -action=approve -environment=env-id`
-4. To destroy `go run ./cmd/starter/main.go -action=destroy -environment=env-id`
+4. To approve `go run ./cmd/starter/main.go -action=approve -environment=env-id`
+5. To destroy `go run ./cmd/starter/main.go -action=destroy -environment=env-id`
     1. this will end the workflow (after deprovisioning)
 
 
 ## Simulating a network outage
 
-The implementation of the `get_forecast` tool includes a 10 second sleep between the two HTTP requests. Experiment with the following:
-- Run it with no firewall rules
-- Add the firewall rules and enable the firewall
-- Disable the firewall, accept the MCP tool execution and then enable the firewall within 10 seconds. Disable the firewall on the 11th second and see what happens.
-
+A nice demonstration of retries can happen via simulating network outages; for example, while you are waiting for human approval in demo 2, disable access to the Cloudflare API. If you are a mac, you can use `pfctl`.
 
 ### Using `pfctl` on a Mac
 
